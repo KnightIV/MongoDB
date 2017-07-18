@@ -14,7 +14,7 @@ import java.util.Date;
 public class Order implements Serializable {
 
 	private static final long serialVersionUID = -3481568987740539789L;
-	
+
 	private int orderID;
 	private float totalPrice;
 	private Date orderDate;
