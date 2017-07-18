@@ -98,8 +98,7 @@ public class Program {
 	 * Takes the user to pick out products to add to their order
 	 */
 	public void shop() {
-		// TODO: figure out a better system to assign non-repeating orderIDs
-		Order userOrder = new Order(1);
+		Order userOrder = new Order(getNextOrderID());
 
 		int choice;
 		while (true) {
@@ -121,6 +120,34 @@ public class Program {
 	}
 
 	/**
+	 * Gets the next orderID so that orders in the database don't clash
+	 * 
+	 * @return - the next order's ID
+	 */
+	private int getNextOrderID() {
+		MongoClientURI uri = new MongoClientURI("mongodb://10.10.17.14:27017");
+		MongoClient mongoClient = new MongoClient(uri);
+		MongoDatabase database = mongoClient.getDatabase("storedb");
+		MongoCollection<Document> collection = database.getCollection("Aggregate");
+		if (collection.count() == 0) {
+			Document doc = new Document();
+			doc.append("orderID", 2);
+			collection.insertOne(doc);
+			mongoClient.close();
+			return 1;
+		}
+		FindIterable<Document> docs = collection.find();
+		int curID = 0;
+		for (Document d : docs) {
+			curID = (Integer) d.get("orderID");
+		}
+		BasicDBObject newDoc = new BasicDBObject().append("$inc", new BasicDBObject().append("orderID", 1));
+		collection.updateOne(new BasicDBObject().append("orderID", curID), newDoc);
+		mongoClient.close();
+		return curID;
+	}
+
+	/**
 	 * Attempts to process the order into MongoDB
 	 * 
 	 * @param userOrder
@@ -132,17 +159,18 @@ public class Program {
 			MainView.displayString("\nYou may not submit an empty order.\n");
 			return false;
 		} else {
-			
 			MongoClientURI uri = new MongoClientURI("mongodb://10.10.17.14:27017");
-			
-			// You can instantiate a MongoClient object without any parameters 
-			// to connect to a MongoDB instance running on localhost on port 27017:
+
+			// You can instantiate a MongoClient object without any parameters
+			// to connect to a MongoDB instance running on localhost on port
+			// 27017:
 			// You must however change the IP to your VM ware (or where ever
-			// mongo is installed) as the connection defaults to your local machine
+			// mongo is installed) as the connection defaults to your local
+			// machine
 			MongoClient mongoClient = new MongoClient(uri);
-			
-			String jsonString = null; 
-			
+
+			String jsonString = null;
+
 			// Specify the name of the database to the getDatabase() method.
 			// If a database does not exist, MongoDB creates the database
 			// when you first store data for that database.
@@ -152,43 +180,50 @@ public class Program {
 			// If a collection does not exist, MongoDB creates the collection
 			// when you first store data for that collection.
 			MongoCollection<Document> collection = database.getCollection("Orders");
-			
+
 			// Converting order to JSON string
-			
+
 			userOrder.setOrderDate(new Date());
-			
+
 			Gson gsonConv = new Gson();
-			
+
 			jsonString = gsonConv.toJson(userOrder);
-			
+
 			// creating new document(row in SQL) and inserting the JSON string
 			Document doc = Document.parse(jsonString);
-			
+
 			collection.insertOne(doc);
 			mongoClient.close();
 			return true;
 		}
 	}
-	
-	public Order viewOrder(long orderID){
+
+	/**
+	 * Returns a specific order to display to the user
+	 * 
+	 * @param orderID
+	 *            - the order's orderID
+	 * @return - the order to display
+	 */
+	public Order viewOrder(int orderID) {
 		MongoClientURI connectionString = new MongoClientURI("mongodb://10.10.17.14:27017");
 		MongoClient mongoClient = new MongoClient(connectionString);
-		MongoDatabase database = mongoClient.getDatabase("storedb"); 
+		MongoDatabase database = mongoClient.getDatabase("storedb");
 		MongoCollection<Document> collection = database.getCollection("Orders");
-		
+
 		BasicDBObject whereClause = new BasicDBObject("orderID", orderID);
 		FindIterable<Document> docs = collection.find(whereClause);
-		
+
 		Gson gsonConv = new Gson();
-		
+
 		Order o = null;
-		
-		for (Document d : docs) {	
+
+		for (Document d : docs) {
 			d.remove("_id");
-			String json = d.toJson();			
+			String json = d.toJson();
 			o = gsonConv.fromJson(json, Order.class);
 		}
-		
+
 		mongoClient.close();
 		return o;
 	}
