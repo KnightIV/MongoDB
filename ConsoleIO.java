@@ -123,10 +123,12 @@ public class ConsoleIO {
 	public static boolean promptForBool(String prompt, String trueString, String falseString) {
 		while (true) {
 			String input = promptForString(prompt, false);
-			
-			if (input.equalsIgnoreCase(trueString)) return true;
-			if (input.equalsIgnoreCase(falseString)) return false;
-			
+
+			if (input.equalsIgnoreCase(trueString))
+				return true;
+			if (input.equalsIgnoreCase(falseString))
+				return false;
+
 			System.out.println("\nYour response didn't match any of the specified options. Try again.\n");
 		}
 	}
