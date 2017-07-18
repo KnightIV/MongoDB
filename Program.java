@@ -98,6 +98,7 @@ public class Program {
 	 * Takes the user to pick out products to add to their order
 	 */
 	public void shop() {
+		// TODO: figure out a better system to assign non-repeating orderIDs
 		Order userOrder = new Order(1);
 
 		int choice;
