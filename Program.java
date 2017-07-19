@@ -1,5 +1,7 @@
 package MongoDbDBT230;
 
+import java.text.NumberFormat;
+import java.time.Month;
 import java.util.Date;
 
 import org.bson.Document;
@@ -10,6 +12,7 @@ import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 
 /**
@@ -42,12 +45,65 @@ public class Program {
 
 			case 1:
 				MainView.displayString(""); // aesthetic
+				MongoClientURI uri = new MongoClientURI("mongodb://10.10.17.14:27017");
+				MongoClient mongoClient = new MongoClient(uri);
+				MongoDatabase database = mongoClient.getDatabase("storedb");
+				MongoCollection<Document> collection = database.getCollection("Aggregate");
+				String report = "";
+				NumberFormat currencyFormatter = NumberFormat.getCurrencyInstance();
+
 				switch (historyReviewFilter()) {
 				case -1:
+					mongoClient.close();
 					break;
 
+				// See a specific order
 				case 0:
-					// TODO query stuff from MongoDB
+					int orderID = ConsoleIO.promptForInt("Type the order ID: ", 1, Integer.MAX_VALUE);
+					MainView.displayString(viewOrder(orderID).toString());
+					break;
+
+				// See orders by month
+				case 1:
+					BasicDBObject monthFilter = new BasicDBObject("month",
+							new BasicDBObject("$gt", 0).append("$lte", 11));
+					FindIterable<Document> monthlySales = collection.find(monthFilter);
+					for (Document d : monthlySales) {
+						int curMonth = (Integer) d.get("month");
+						double totalPrice = (Double) d.get("totalPrice");
+						report += Month.of(curMonth + 1) + " Revenue: " + currencyFormatter.format(totalPrice) + "\n";
+					}
+					MainView.displayString(report);
+					mongoClient.close();
+					break;
+
+				// See total sales EVER
+				case 2:
+					FindIterable<Document> totalSales = collection.find();
+					for (Document d : totalSales) {
+						if (d.containsKey("totalSales")) {
+							report += "Total sales EVER: "
+									+ currencyFormatter.format(d.get("totalSales", Double.class));
+						}
+					}
+					MainView.displayString(report);
+					mongoClient.close();
+					break;
+
+				// Sales by product
+				case 3:
+					FindIterable<Document> prodIterate = collection.find();
+					for (Document d : prodIterate) {
+						for (Product p : storeProducts) {
+							String value = d.get("productName", String.class);
+							if (value != null && value.equals(p.getName())) {
+								report += "Product: " + p.getName() + " | Quantity sold: " + d.get("quantity") + "\n";
+								break;
+							}
+						}
+					}
+					MainView.displayString(report);
+					mongoClient.close();
 					break;
 				}
 			}
@@ -73,14 +129,16 @@ public class Program {
 	 * orders <br>
 	 * The list of choices with their return values are: <br>
 	 * &nbsp;&nbsp;&nbsp;<b>-1.</b> Exit to the order screen <br>
-	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>0.</b> Filter by date ordered <br>
-	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>1.</b> Filter by category of product <br>
-	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>2.</b> Filter by the product's ID
+	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>0.</b> Filter by a specific orderID <br>
+	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>1.</b> Filter by month <br>
+	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>2.</b> Filter by total sales EVER <br>
+	 * &nbsp;&nbsp;&nbsp;&nbsp;<b>3.</b> Filter by sale quantity by product
 	 * 
 	 * @return - the user's choice as an int
 	 */
 	private int historyReviewFilter() {
-		String[] options = new String[] { "Date ordered", "Category", "Product ID" };
+		String[] options = new String[] { "See a specific order", "See orders by month", "See total sales EVER",
+				"See sales by product" };
 		return ConsoleIO.promptForMenuSelection("Select your filter: ", options, true, "Exit");
 	}
 
@@ -91,7 +149,16 @@ public class Program {
 	private void shopSetup() {
 		storeProducts = new Product[] { new Product(1, 499.99f, "PS4", Category.ELECTRONICS),
 				new Product(5, 529.99f, "OnePlus 5", Category.ELECTRONICS),
-				new Product(2, 299.99f, "Nintendo Switch", Category.ELECTRONICS) };
+				new Product(2, 299.99f, "Nintendo Switch", Category.ELECTRONICS),
+				new Product(13, 999.99f, "Elephant", Category.ANIMALS),
+				new Product(19, 1499.99f, "Giraffe", Category.ANIMALS),
+				new Product(10, 450.00f, "Hippopotamus", Category.ANIMALS),
+				new Product(21, 99.99f, "Zero-G Shoes", Category.CLOTHING),
+				new Product(27, 299.99f, "Stilettos", Category.CLOTHING),
+				new Product(25, 0.99f, "Humongous\u2122 Underwear", Category.CLOTHING),
+				new Product(30, 100000.00f, "Aphelion Spaceship", Category.VEHICLES),
+				new Product(1000, 14000000.0f, "Millenium Falcon", Category.VEHICLES),
+				new Product(33, 50.00f, "Tank destroyer", Category.VEHICLES)};
 	}
 
 	/**
@@ -139,7 +206,8 @@ public class Program {
 		FindIterable<Document> docs = collection.find();
 		int curID = 0;
 		for (Document d : docs) {
-			curID = (Integer) d.get("orderID");
+			if (d.containsKey("orderID"))
+				curID = (Integer) d.get("orderID");
 		}
 		BasicDBObject newDoc = new BasicDBObject().append("$inc", new BasicDBObject().append("orderID", 1));
 		collection.updateOne(new BasicDBObject().append("orderID", curID), newDoc);
@@ -193,8 +261,81 @@ public class Program {
 			Document doc = Document.parse(jsonString);
 
 			collection.insertOne(doc);
+
+			updateAggregateData(mongoClient, userOrder);
+
 			mongoClient.close();
+
 			return true;
+		}
+	}
+
+	/**
+	 * Updates all aggregate data in the database through the order the user
+	 * submitted
+	 * 
+	 * @param client
+	 *            - the mongo client to use
+	 * @param userOrder
+	 *            - the user's order
+	 */
+	@SuppressWarnings("deprecation")
+	private void updateAggregateData(MongoClient client, Order userOrder) {
+		MongoDatabase database = client.getDatabase("storedb");
+		MongoCollection<Document> collection = database.getCollection("Aggregate");
+
+		// Update monthly sales
+		BasicDBObject dateWhere = new BasicDBObject("month", userOrder.getOrderDate().getMonth());
+		FindIterable<Document> doc = collection.find(dateWhere);
+		MongoCursor<Document> cursor = doc.iterator();
+		if (!cursor.hasNext()) {
+			Document curMonthSale = new Document();
+			curMonthSale.append("month", userOrder.getOrderDate().getMonth());
+			curMonthSale.append("totalPrice", userOrder.getTotalPrice());
+			collection.insertOne(curMonthSale);
+		} else {
+			BasicDBObject newDoc = new BasicDBObject().append("$inc",
+					new BasicDBObject().append("totalPrice", userOrder.getTotalPrice()));
+			collection.updateOne(new BasicDBObject().append("month", userOrder.getOrderDate().getMonth()), newDoc);
+		}
+
+		// Update total sales EVER
+		FindIterable<Document> allDocs = collection.find();
+		MongoCursor<Document> totalCursor = allDocs.iterator();
+		boolean wasFound = false;
+		while (totalCursor.hasNext()) {
+			Document nextDoc = totalCursor.next();
+			if (nextDoc.containsKey("totalSales")) {
+				double curTotalPrice = nextDoc.get("totalSales", Double.class);
+				BasicDBObject newDoc = new BasicDBObject().append("$inc",
+						new BasicDBObject().append("totalSales", userOrder.getTotalPrice()));
+				collection.updateOne(new BasicDBObject().append("totalSales", curTotalPrice), newDoc);
+				wasFound = true;
+				break;
+			}
+		}
+
+		if (!wasFound) {
+			Document totalSales = new Document();
+			totalSales.append("totalSales", userOrder.getTotalPrice());
+			collection.insertOne(totalSales);
+		}
+
+		// Update sales by product
+		for (Product p : userOrder.getProducts()) {
+			BasicDBObject productFilter = new BasicDBObject("productName", p.getName());
+			FindIterable<Document> productDocIterate = collection.find(productFilter);
+			MongoCursor<Document> prodCursor = productDocIterate.iterator();
+
+			if (prodCursor.hasNext()) {
+				BasicDBObject newDoc = new BasicDBObject().append("$inc", new BasicDBObject().append("quantity", 1));
+				collection.updateOne(new BasicDBObject().append("productName", p.getName()), newDoc);
+			} else {
+				Document prodDoc = new Document();
+				prodDoc.append("productName", p.getName());
+				prodDoc.append("quantity", 1);
+				collection.insertOne(prodDoc);
+			}
 		}
 	}
 
