@@ -8,7 +8,7 @@ package MongoDbDBT230;
  */
 public enum Category {
 
-	ELECTRONICS("Electronics", 1);
+	ELECTRONICS("Electronics", 1), ANIMALS("Animals", 2), CLOTHING("Clothing", 3), VEHICLES("Vehicles", 4);
 
 	private String category;
 	private long categoryID;
