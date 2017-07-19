@@ -125,4 +125,8 @@ public class Order implements Serializable {
 	public void setOrderDate(Date orderDate) {
 		this.orderDate = orderDate;
 	}
+	
+	public ArrayList<Product> getProducts() {
+		return products;
+	}
 }
